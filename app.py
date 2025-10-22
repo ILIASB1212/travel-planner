@@ -1,5 +1,4 @@
-# --- MODIFICATION: Removed unused import ---
-# from langchain_community.utilities.google_search import GoogleSearchAPIWrapper
+
 from Agents.hotels import searchapi_hotel_search, searchapi_hotel_details, quick_hotel_search
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage, AIMessage
 from typing import Annotated, TypedDict, List, Optional
@@ -12,8 +11,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.tools import Tool
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-# --- MODIFICATION: Import the new activity and directions tools ---
-from Agents.activities import google_search_activities # Removed unused google_search_entertainment
+from Agents.activities import google_search_activities 
 from Agents.directions import get_openrouteservice_directions # <-- ADDED
 import streamlit as st
 import json
@@ -76,15 +74,13 @@ class State(TypedDict):
     departureDate: Optional[str]
     returnDate: Optional[str]
     interests: Optional[str]
-    # --- ADDITION: Track directions need ---
     needs_directions: bool
     flight_cost_eur: Optional[float]
     flight_carrier: Optional[str]
     hotel_searched: bool
     flight_searched: bool
     activities_searched: bool
-    # --- ADDITION: Track directions search ---
-    directions_searched: bool # <-- ADDED
+    directions_searched: bool 
     feasibility_status: Optional[str]
     remaining_budget_usd: Optional[float]
     messages: Annotated[list, add_messages]
@@ -92,13 +88,11 @@ class State(TypedDict):
 #----------NODES-----------
 def chatbot(state: State):
     context = ""
-    # --- MODIFICATION: Add new state fields to filter ---
     relevant_state = {k: v for k, v in state.items() if k not in ['messages', 'feasibility_status', 'remaining_budget_usd', 'flight_cost_eur', 'hotel_searched', 'flight_searched', 'activities_searched', 'directions_searched'] and v and v != [''] and v != ''}
 
     if relevant_state:
         context = "Current Travel Plan Details:\n"
         for k, v in relevant_state.items():
-            # Don't show needs_directions in context, it's just a flag
             if k != 'needs_directions':
                  context += f"- {k.replace('_', ' ').title()}: {v}\n"
 
@@ -107,7 +101,6 @@ def chatbot(state: State):
     duration = state.get('duration', 'the specified number of')
     feasibility_status = state.get('feasibility_status', 'UNKNOWN')
 
-    # --- MODIFICATION: Check all FOUR search statuses ---
     flight_searched = state.get('flight_searched', False) or any(
         hasattr(m, 'name') and m.name == 'amadeus_flight_search'
         for m in state['messages']
@@ -120,22 +113,17 @@ def chatbot(state: State):
         hasattr(m, 'name') and m.name == 'google_search_activities'
         for m in state['messages']
     )
-    # Check if directions were needed AND searched
     needs_directions_flag = state.get('needs_directions', False)
     directions_searched = state.get('directions_searched', False) or any(
          hasattr(m, 'name') and m.name == 'get_openrouteservice_directions'
          for m in state['messages']
     )
-    # --- END OF MODIFICATION ---
-
-    # ✅ If ALL standard searches are done, decide if directions needed or finish
+    
     if flight_searched and hotel_searched and activities_searched:
 
-        # If directions were requested but not yet searched, call the directions tool
         if needs_directions_flag and not directions_searched:
             print("✅ chatbot: All searches done, proceeding to directions search")
 
-            # --- ADDITION: Specific prompt for directions ---
             prompt_instructions = [
                 "You are an expert travel planner.",
                 "The user needs directions between two locations from the plan.",
@@ -151,16 +139,12 @@ def chatbot(state: State):
                 "\n\n⚠️ CRITICAL: Only call 'get_openrouteservice_directions' NOW."
             ]
             system_prompt = "\n".join(prompt_instructions)
-            # Send context AND message history for inferring locations
             messages_for_llm = [SystemMessage(content=system_prompt)] + state['messages']
             result = llm_with_tools.invoke(messages_for_llm)
-            # --- END ADDITION ---
 
-        # If directions were not needed OR they have been searched, generate final response
         else:
             print("✅ chatbot: Generating FINAL response (using base llm)")
 
-            # --- MODIFICATION: Updated FINAL prompt to include directions ---
             system_prompt = f"""You are an expert travel planner providing the FINAL travel plan summary.
 
 IMPORTANT: You must not call any tools. You already have all the information needed.
@@ -186,14 +170,12 @@ Your task now is to provide a comprehensive final response including:
 {context}
 
 Provide a well-formatted, conversational response. DO NOT call any tools."""
-            # --- END OF MODIFICATION ---
 
             messages_with_context = [SystemMessage(content=system_prompt)] + state['messages']
             result = llm.invoke(messages_with_context)
 
     else:
-        # Normal workflow (Flights -> Hotels -> Activities)
-        # --- 💡💡💡 THIS IS THE MAIN FIX V5 (Stronger Instructions) 💡💡💡 ---
+        
         print(f"✅ chatbot: Running normal workflow (flight: {flight_searched}, hotel: {hotel_searched}, activities: {activities_searched})")
 
         prompt_instructions = [
@@ -223,23 +205,20 @@ Provide a well-formatted, conversational response. DO NOT call any tools."""
             tool_to_call = "google_search_activities"
         else:
              prompt_instructions.append("Instruction: All standard searches are complete. DO NOT call any tools now.")
-             tool_to_call = None # Should not happen, but prevents error
+             tool_to_call = None 
 
         prompt_instructions.append(f"\nYour response MUST be a call to the tool '{tool_to_call}' if specified, otherwise no tool call.")
         prompt_instructions.append("Provide ONLY the tool call, no other text.")
-        # --- End of Stricter Logic ---
 
         system_prompt = "\n".join(prompt_instructions)
-        # Minimal messages to prevent confusion
         messages_for_llm = [SystemMessage(content=system_prompt)]
-        if tool_to_call == "Travel": # Only need human input for the first step
+        if tool_to_call == "Travel": 
             for msg in reversed(state['messages']):
                 if isinstance(msg, HumanMessage):
                     messages_for_llm.append(msg)
                     break
 
         result = llm_with_tools.invoke(messages_for_llm)
-        # --- 💡💡💡 END OF THE MAIN FIX V5 💡💡💡 ---
 
 
     print(f"DEBUG - LLM Response tool_calls: {result.tool_calls if hasattr(result, 'tool_calls') else 'None'}")
@@ -259,7 +238,6 @@ def update_state(state: State):
                     extracted_data = tool_call['args']
                     new_state = {}
 
-                    # --- MODIFICATION: Add interests AND needs_directions ---
                     field_mapping = {
                         'depart': 'depart', 'destination': 'destination', 'duration': 'duration',
                         'adults': 'adults', 'budget': 'budget', 'departureDate': 'departureDate',
@@ -272,21 +250,17 @@ def update_state(state: State):
                             value = extracted_data[source_key]
                             if value is not None and value != '':
                                 if target_key == 'adults': new_state[target_key] = int(value) if value else 1
-                                # --- ADDITION: Handle boolean flag ---
                                 elif target_key == 'needs_directions':
-                                    # Handle potential string 'true'/'false' from LLM
                                     if isinstance(value, str):
                                         new_state[target_key] = value.lower() == 'true'
                                     else:
                                         new_state[target_key] = bool(value)
                                 else: new_state[target_key] = str(value)
 
-                    # Set defaults
                     if 'adults' not in new_state: new_state['adults'] = 1
                     if 'interests' not in new_state: new_state['interests'] = 'general sightseeing'
                     if 'needs_directions' not in new_state: new_state['needs_directions'] = False # Default to false
 
-                    # Calculate duration if possible
                     if 'duration' not in new_state and 'departureDate' in new_state and 'returnDate' in new_state:
                         from datetime import datetime
                         try:
@@ -297,11 +271,10 @@ def update_state(state: State):
                             else: new_state['duration'] = "Invalid dates"
                         except:
                             new_state['duration'] = "Date parse error"
-                    # --- MODIFICATION: Handle missing return date for one-way or flexible duration ---
                     elif 'duration' not in new_state and 'departureDate' in new_state:
-                        new_state['duration'] = "Flexible / One-way" # Assume flexible if only departure given
+                        new_state['duration'] = "Flexible / One-way" 
                     elif 'duration' not in new_state:
-                        new_state['duration'] = "Not specified" # Default if no dates or duration
+                        new_state['duration'] = "Not specified" 
 
 
                     print(f"✅ State extracted successfully: {new_state}")
@@ -313,7 +286,6 @@ def update_state(state: State):
                     return {}
     return {}
 
-# --- calculate_budget_status remains unchanged ---
 def calculate_budget_status(state: State) -> dict:
     flight_messages = [m for m in state['messages'] if hasattr(m, 'name') and m.name == 'amadeus_flight_search']
     if not flight_messages: return {"feasibility_status": "ERROR", "flight_cost_eur": 0.0, "flight_carrier": "Unknown", "remaining_budget_usd": 0.0, "flight_searched": True}
@@ -321,37 +293,32 @@ def calculate_budget_status(state: State) -> dict:
     if "not configured" in last_flight.content or "API Error" in last_flight.content:
         print(f"Flight search failed: {last_flight.content}"); return {"feasibility_status": "ERROR", "flight_cost_eur": 0.0, "flight_carrier": "Unknown", "remaining_budget_usd": 0.0, "flight_searched": True}
     try:
-        # Robust parsing: Find price and currency first, then carrier
         price_match = re.search(r'(\d+\.?\d*)\s*([A-Z]{3})', last_flight.content)
         flight_price_eur = 0.0
-        currency = "EUR" # Default assumption
+        currency = "EUR" 
         if price_match:
             flight_price_eur = float(price_match.group(1))
             currency = price_match.group(2) # Get actual currency if found
 
-        # Try finding carrier name (might be Operating or Validating)
         carrier_match = re.search(r'(?:Operating Airline\(s\)|Validating Airline):\s*([^(\n|]+)', last_flight.content)
         flight_carrier = carrier_match.group(1).strip() if carrier_match else "Unknown"
 
         EUR_TO_USD_RATE = 1.07
-        # Convert to USD only if the original currency was EUR
         flight_price_usd = flight_price_eur * EUR_TO_USD_RATE if currency == "EUR" else flight_price_eur
 
     except Exception as e: print(f"Error parsing flight tool output: {e}"); return {"feasibility_status": "ERROR", "flight_cost_eur": 0.0, "flight_carrier": "Unknown", "remaining_budget_usd": 0.0, "flight_searched": True}
     try:
-        budget_str = state.get('budget', '0 USD') # Default to '0 USD' if missing
+        budget_str = state.get('budget', '0 USD') 
         budget_match = re.search(r'(\d+)', budget_str)
         user_budget_usd = float(budget_match.group(0)) if budget_match else 0.0
     except Exception: user_budget_usd = 0.0
-    MIN_GROUND_COSTS_USD = 300.0 # Reduced minimum for flexibility
+    MIN_GROUND_COSTS_USD = 300.0 
     remaining = user_budget_usd - flight_price_usd
     status = "FEASIBLE" if remaining >= MIN_GROUND_COSTS_USD else "OVER_BUDGET"
     print(f"💰 Budget Check: Flight={flight_price_usd:.2f} USD ({flight_price_eur:.2f} {currency}), Total Budget={user_budget_usd:.2f} USD, Remaining={remaining:.2f} USD, Status={status}")
-    # --- Store original EUR price, let final summary convert if needed ---
     return {"flight_cost_eur": flight_price_eur, "flight_carrier": flight_carrier, "feasibility_status": status, "remaining_budget_usd": remaining, "flight_searched": True}
 
 
-# --- Conditional Edge Functions ---
 def route_after_tool_result(state: State) -> str:
     """Route based on the LAST tool that was executed."""
     tool_messages = [m for m in state['messages'] if hasattr(m, 'name')]
@@ -359,7 +326,6 @@ def route_after_tool_result(state: State) -> str:
     last_tool = tool_messages[-1]
     print(f"📍 Routing after tool: {last_tool.name}")
 
-    # --- MODIFICATION: Add route for directions tool ---
     if last_tool.name == "Travel": return "extract_data"
     elif last_tool.name == "amadeus_flight_search": return "budget_check"
     elif last_tool.name == "quick_hotel_search": return "mark_hotel_done"
@@ -377,13 +343,11 @@ def mark_activities_complete(state: State) -> dict:
     print("✅ Activity search completed - checking if directions needed")
     return {"activities_searched": True}
 
-# --- ADDITION: New node function for directions ---
 def mark_directions_done(state: State) -> dict:
     """Mark directions search as complete."""
     print("✅ Directions search completed - preparing final response")
     return {"directions_searched": True}
 
-# --- route_by_feasibility remains unchanged ---
 def route_by_feasibility(state: State) -> str:
     status = state.get('feasibility_status'); print(f"🔀 Feasibility routing: {status}")
     return "chatbot"
@@ -392,41 +356,34 @@ def tools_condition(state: State) -> str:
     """Check if LLM wants to call tools or end."""
     last_message = state['messages'][-1]
 
-    # --- MODIFICATION: Check all FOUR search flags ---
     has_flight = state.get('flight_searched', False)
     has_hotel = state.get('hotel_searched', False)
     has_activities = state.get('activities_searched', False)
     needs_directions = state.get('needs_directions', False)
     has_directions = state.get('directions_searched', False)
 
-    # End condition: All standard searches done AND (directions not needed OR directions done)
     all_standard_searches_done = has_flight and has_hotel and has_activities
     directions_logic_complete = (not needs_directions) or (needs_directions and has_directions)
 
     if all_standard_searches_done and directions_logic_complete:
         print("✅ All required searches complete - deciding final step")
-    # --- END OF MODIFICATION ---
-        # If the last message ALREADY has content, we are truly done
+    
         if hasattr(last_message, 'content') and last_message.content and not (hasattr(last_message, 'tool_calls') and last_message.tool_calls):
             print("➡️ Final content found. Ending.")
             return END
-        # If the last message was a tool result OR the LLM tried to call a tool again,
-        # route back to chatbot to generate the final summary.
+        
         else:
              print("⚠️ Last message not final content or tried tool call. Routing to chatbot for summary.")
-             # Clear any lingering tool calls from the last message just in case
              if hasattr(last_message, 'tool_calls'):
                  last_message.tool_calls = []
              return "chatbot" # Force chatbot to generate final summary
 
-    # Standard tool call condition
     if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
         if len(last_message.tool_calls) > 1:
             print(f"⚠️ WARNING: Multiple tool calls detected, only executing first one")
             last_message.tool_calls = [last_message.tool_calls[0]]
         return "tools"
 
-    # If no tool calls and not finished, route back to chatbot to figure out next step
     print("⚠️ tools_condition: No tool calls but not finished? Routing to chatbot.")
     return "chatbot"
 
@@ -435,41 +392,34 @@ def tools_condition(state: State) -> str:
 graph_builder = StateGraph(State)
 
 graph_builder.add_node("chatbot", chatbot)
-tool_node = ToolNode(tools=excecution_tool) # Keep using correct list
+tool_node = ToolNode(tools=excecution_tool) 
 
 def debug_tool_node(state: State):
     last_msg = state['messages'][-1]
-    # Add safety check for tool_calls existence
     tool_calls = getattr(last_msg, 'tool_calls', [])
     print(f"\n🔧 DEBUG - Executing tools: {tool_calls}")
 
     if tool_calls and len(tool_calls) > 1:
         print(f"⚠️ Limiting to first tool call only")
-        # Ensure modification happens correctly
-        mutable_calls = list(tool_calls) # Make a mutable copy if needed
-        last_msg.tool_calls = [mutable_calls[0]] # Assign back the single call
-
-    # Handle case where there are no tool calls somehow (shouldn't happen with tools_condition)
+        mutable_calls = list(tool_calls) 
+        last_msg.tool_calls = [mutable_calls[0]] 
     if not tool_calls:
          print("⚠️ debug_tool_node: No tool calls found in last message.")
-         # Return state without modification, maybe add empty ToolMessage?
          return {"messages": [ToolMessage(content="No tool to execute.", tool_call_id="N/A")]}
 
 
     try:
         result = tool_node.invoke(state)
         print(f"   Tool results: {[getattr(msg, 'name', 'N/A') for msg in result.get('messages', []) if isinstance(msg, ToolMessage) or hasattr(msg, 'name')]}")
-        # --- FIX: Ensure result is always a dictionary ---
         if isinstance(result, dict):
             return result
-        elif isinstance(result, list): # ToolNode sometimes returns a list of messages
+        elif isinstance(result, list): 
              return {"messages": result}
         else:
             print(f"⚠️ Unexpected tool node result type: {type(result)}")
-            # Attempt to recover, assuming result might be messages
             if hasattr(result, '__iter__'):
                  return {"messages": list(result)}
-            else: # Fallback: return an error message
+            else: 
                  error_msg = ToolMessage(content=f"Unexpected tool result type: {type(result)}", tool_call_id=tool_calls[0]['id'] if tool_calls else 'N/A')
                  current_messages = state.get('messages', [])
                  return {"messages": current_messages + [error_msg]}
@@ -477,8 +427,7 @@ def debug_tool_node(state: State):
     except Exception as e:
         print(f"❌ Error during tool execution: {e}")
         import traceback
-        traceback.print_exc() # Print full traceback for debugging
-        # Return error message in state
+        traceback.print_exc() 
         error_message = ToolMessage(content=f"Error executing tool: {e}", tool_call_id=tool_calls[0]['id'] if tool_calls else 'N/A')
         current_messages = state.get('messages', [])
         return {"messages": current_messages + [error_message]}
@@ -489,26 +438,22 @@ graph_builder.add_node("extract_data", update_state)
 graph_builder.add_node("budget_check", calculate_budget_status)
 graph_builder.add_node("mark_hotel_done", mark_hotel_complete)
 graph_builder.add_node("mark_activities_done", mark_activities_complete)
-# --- ADDITION: Add new directions node ---
 graph_builder.add_node("mark_directions_done", mark_directions_done)
 
-# Edges
 graph_builder.add_edge(START, "chatbot")
 
 graph_builder.add_conditional_edges("chatbot", tools_condition, {
     "tools": "tools",
-    # --- MODIFICATION: Allow routing back to chatbot ---
     "chatbot": "chatbot",
     END: END
 })
 
-# --- MODIFICATION: Add new route for directions ---
 graph_builder.add_conditional_edges("tools", route_after_tool_result, {
     "extract_data": "extract_data",
     "budget_check": "budget_check",
     "mark_hotel_done": "mark_hotel_done",
     "mark_activities_done": "mark_activities_done",
-    "mark_directions_done": "mark_directions_done", # <-- ADDED
+    "mark_directions_done": "mark_directions_done", 
     "chatbot": "chatbot"
 })
 
@@ -516,19 +461,17 @@ graph_builder.add_edge("extract_data", "chatbot")
 graph_builder.add_conditional_edges("budget_check", route_by_feasibility, {"chatbot": "chatbot"})
 graph_builder.add_edge("mark_hotel_done", "chatbot")
 graph_builder.add_edge("mark_activities_done", "chatbot")
-# --- ADDITION: Add new edge for directions ---
 graph_builder.add_edge("mark_directions_done", "chatbot")
 
 
-# --- MODIFICATION: Correctly initialize and use the checkpointer ---
-# Ensure the 'database' directory exists before connecting
+
 db_directory = "database"
 if not os.path.exists(db_directory):
     os.makedirs(db_directory)
 db_path = os.path.join(db_directory, "memory.db")
 
-# Use a global connection for the lifetime of the Streamlit app
-conn = None # Initialize conn to None
+
+conn = None 
 try:
     conn = sqlite3.connect(db_path, check_same_thread=False)
     memory = SqliteSaver(conn=conn)
@@ -536,12 +479,12 @@ try:
     print("✅ Graph compiled with SQLite checkpointer.")
 except Exception as e:
     print(f"❌ Failed to compile graph with checkpointer: {e}")
-    graph = graph_builder.compile() # Fallback without memory
+    graph = graph_builder.compile() 
     print("⚠️ WARNING: Graph compiled WITHOUT checkpointer due to error.")
-    if conn: # Close connection if compilation failed after opening
+    if conn: 
         try: conn.close()
         except: pass
-        conn = None # Ensure conn is None if closed
+        conn = None 
 # --- END OF MODIFICATION ---
 
 #--------------------UI------------------------
@@ -628,19 +571,5 @@ if st.button("✈️ Plan My Trip"):
     else:
         st.warning("Please enter your travel request.")
 
-# --- ADDITION: Attempt to close DB connection ---
-# Using Streamlit's session state might be safer for managing the connection
-# Or ensure it's closed properly when the app truly exits.
-# This simple atexit might not work reliably with Streamlit's lifecycle.
-# import atexit
-# @atexit.register
-# def close_db():
-#     global conn
-#     if conn:
-#         try:
-#             conn.close()
-#             print("Database connection closed on exit.")
-#         except Exception as close_e:
-#             print(f"Error closing database connection on exit: {close_e}")
-# --- END ADDITION ---
+
 
