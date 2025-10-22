@@ -1,0 +1,32 @@
+Ignore virtual environment folders
+
+.venv/
+venv/
+env/
+
+Ignore Git folder
+
+.git/
+
+Ignore Python cache files
+
+pycache/
+*.pyc
+
+Ignore environment variable files (IMPORTANT for security)
+
+.env*
+
+Ignore database files (if you want fresh memory each time)
+
+database/
+
+Ignore Docker files themselves
+
+Dockerfile
+.dockerignore
+
+Ignore OS-specific files
+
+.DS_Store
+Thumbs.db
