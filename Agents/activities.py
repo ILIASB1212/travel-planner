@@ -2,16 +2,16 @@ from langchain_google_community import GoogleSearchAPIWrapper
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 from typing import Optional
-
-api_key="AIzaSyBfbJVw4qNoxmNgWkmFii4isTCERsrtiKY"
-cse_id="97b82ecacffd94443"
-#google_api_key=api_key,google_cse_id=cse_id
 import os
-#os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY")
-#os.environ["GOOGLE_SCE_ID"]=os.getenv("GOOGLE_SCE_ID")
+from dotenv import load_dotenv
+load_dotenv()
+
+
+os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY") 
+os.environ["GOOGLE_SCE_ID"]=os.getenv("GOOGLE_SCE_ID")
 try:
     # --- MODIFICATION: The new wrapper reads keys from environment by default ---
-    google_search = GoogleSearchAPIWrapper(google_api_key=api_key,google_cse_id=cse_id)
+    google_search = GoogleSearchAPIWrapper()
 except ImportError:
     print("Could not import GoogleSearchAPIWrapper. Please install langchain-google-community: pip install -U langchain-google-community")
     google_search = None

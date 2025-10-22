@@ -4,7 +4,8 @@ import requests
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
-
+from dotenv import load_dotenv
+load_dotenv()
 # --- SearchApi Configuration ---
 SEARCHAPI_KEY = os.getenv("SEARCHAPI_KEY")
 SEARCHAPI_BASE_URL = "https://www.searchapi.io/api/v1/search"

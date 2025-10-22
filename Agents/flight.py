@@ -1,19 +1,15 @@
-# Import necessary libraries
 import os
-from typing import Optional, Dict, Any
+from typing import Optional
 from amadeus import Client, ResponseError
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
-
-# --- Amadeus Client Initialization ---
-# Assuming AMADEUS_CLIENT_ID and AMADEUS_CLIENT_SECRET are set in environment variables
-# --- Amadeus Client Initialization ---
-# Debug: Print what we're getting
+from dotenv import load_dotenv
+load_dotenv()
 
 
 try:
-    amadeus_id = "Ui0TUONWs7Ln9f5H8pEV0HG6cApUld4M"
-    amadeus_secret = "EvIoWaVGgXL73yGe"
+    amadeus_id = os.getenv("AMADEUS_CLIENT_ID") 
+    amadeus_secret = os.getenv("AMADEUS_CLIENT_SECRET") 
     
     if not amadeus_id or not amadeus_secret:
         print("WARNING: Amadeus credentials not found in environment variables")
